@@ -153,6 +153,23 @@ CORRIDOR_MILES = float(os.getenv("CORRIDOR_MILES", "10"))
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
 OSRM_TIMEOUT_SECONDS = float(os.getenv("OSRM_TIMEOUT_SECONDS", "20"))
 
+# Background tiles for the map page. These are fetched by the browser, not by this server, so they
+# cost the API nothing.
+#
+# Not openstreetmap.org: its tile CDN now rejects third-party apps outright, answering with
+# "x-blocked: Access denied" and a placeholder image rather than a map. Its usage policy asks that
+# applications not hotlink its tiles, and it enforces that. CARTO publishes these basemaps for free
+# use with attribution, needs no API key, and the light style keeps the route line legible.
+MAP_TILE_URL = os.getenv(
+    "MAP_TILE_URL", "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+)
+MAP_TILE_SUBDOMAINS = os.getenv("MAP_TILE_SUBDOMAINS", "abcd")
+MAP_TILE_ATTRIBUTION = os.getenv(
+    "MAP_TILE_ATTRIBUTION",
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors '
+    '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+)
+
 # Geocoding fallback for free-text locations that the local city index cannot resolve.
 NOMINATIM_BASE_URL = os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")
 

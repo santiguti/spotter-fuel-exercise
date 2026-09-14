@@ -72,9 +72,10 @@
 <script>
 (function () {
   const map = L.map('map').setView([39.5, -98.35], 4);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  L.tileLayer('{{ tile_url|escapejs }}', {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
+    subdomains: '{{ tile_subdomains|escapejs }}',
+    attribution: '{{ tile_attribution|escapejs }}'
   }).addTo(map);
 
   const raw = document.getElementById('trip-data');

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
@@ -85,7 +86,13 @@ def route_api(request: HttpRequest) -> JsonResponse:
 @require_GET
 def route_map(request: HttpRequest) -> HttpResponse:
     """GET /map/?start=Dallas, TX&finish=New York, NY — the same result, drawn."""
-    context: dict = {"start": request.GET.get("start", ""), "finish": request.GET.get("finish", "")}
+    context: dict = {
+        "start": request.GET.get("start", ""),
+        "finish": request.GET.get("finish", ""),
+        "tile_url": settings.MAP_TILE_URL,
+        "tile_subdomains": settings.MAP_TILE_SUBDOMAINS,
+        "tile_attribution": settings.MAP_TILE_ATTRIBUTION,
+    }
 
     if context["start"] and context["finish"]:
         try:

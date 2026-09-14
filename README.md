@@ -55,11 +55,11 @@ Run the tests with `./.venv/bin/pytest`.
   "finish": { "name": "New York City, NY", "latitude": 40.71427, "longitude": -74.00597, "resolved_by": "local index" },
 
   "total_distance_miles": 1548.9,
-  "total_gallons_purchased": 104.89,
-  "total_cost_usd": 301.60,
+  "total_gallons_purchased": 104.88,
+  "total_cost_usd": 300.74,
 
   "total_fuel_burned_gallons": 154.89,
-  "total_cost_including_starting_tank_usd": 439.40,
+  "total_cost_including_starting_tank_usd": 440.79,
 
   "fuel_stops": [
     {
@@ -79,13 +79,13 @@ Run the tests with `./.venv/bin/pytest`.
   "route": { "type": "LineString", "coordinates": [[-96.80667, 32.78306], "..."] },
   "assumptions":  { "vehicle_range_miles": 500.0, "miles_per_gallon": 10.0,
                     "started_with_full_tank": true, "max_detour_off_route_miles": 10.0 },
-  "performance":  { "routing_api_calls": 1, "stations_in_corridor": 437, "elapsed_ms": 412.0 },
+  "performance":  { "routing_api_calls": 1, "stations_in_corridor": 335, "elapsed_ms": 412.0 },
   "map_url": "http://localhost:8000/map/?start=Dallas,+TX&finish=New+York,+NY"
 }
 ```
 
 **Two totals, because the brief is ambiguous.** It fixes the range at 500 miles but never says what
-is in the tank at the start, and that is a $301 versus $439 difference on the same drive. Rather than
+is in the tank at the start, and that is a $301 versus $441 difference on the same drive. Rather than
 pick one silently, the response reports both and states which model produced the stop list.
 
 ### Status codes
@@ -131,7 +131,7 @@ A test asserts the call count, because this is the kind of constraint that regre
 About 2.1 s of the cold figure is OSRM's own response time. Everything this service does — scanning
 6,576 stations against the route and planning the stops — is roughly 25 ms.
 
-Two things make that possible. The 6,605 stations are read into memory once per process rather than
+Two things make that possible. The 6,576 stations are read into memory once per process rather than
 queried per request. And the corridor scan, which would naively be 6,576 stations × 21,000 route
 points ≈ 139 million distance calculations, thins the route to one point per mile and buckets those
 points into a coordinate grid, so each station only examines the few points that could be near it.
@@ -153,17 +153,17 @@ Because both moves are locally forced, the greedy result is globally optimal, wh
 no dynamic programming table and no search. `tests/test_planner.py` checks it against an exhaustive
 search over 40 random routes.
 
-On Dallas → New York this pays **$2.88 a gallon against a $3.40 average** for the stations it passed.
+On Dallas → New York this pays **$2.87 a gallon against a $3.40 average** for the stations it passed.
 
 ### One deliberate departure from the strict optimum
 
 The pure optimum tops the tank up at every marginally cheaper station, which on Miami → Seattle
-means 20 stops, some buying **a tenth of a gallon**. Those are optimal on paper and not plans anyone
+means 21 stops, some buying **a tenth of a gallon**. Those are optimal on paper and not plans anyone
 would follow. So a stop has to be worth making: trivial top-ups are skipped where the vehicle can
 reach the next station without them, and genuinely necessary purchases are rounded up rather than
 skipped, since skipping those would strand the vehicle.
 
-It costs **0.18%** — $1.53 on an $850 trip — and turns 20 stops into 13. Pass
+It costs **0.18%** — $1.52 on an $849 trip — and turns 21 stops into 13. Pass
 `min_purchase_gallons=0` for the strict optimum; both are tested.
 
 ---
@@ -194,11 +194,17 @@ currency — mixing that into a dollar total would corrupt the result.
 
 **Duplicate stations were merged.** 904 rows repeat an OPIS Truckstop ID under a different name
 (`PILOT TRAVEL CENTER #1243` and `PILOT #1243`), so the loader keeps one row per ID at the cheapest
-price. 8,151 rows become 6,605 stations.
+price. 8,151 rows become 6,605, and 6,576 after the ambiguous ones above are excluded.
 
 **Geocoding coverage is 99.32%** — 7,480 of 7,531 US rows, yielding 6,576 stations. The 51 failures
 are towns GeoNames does not list under that name (`WILLOW BEACH, AZ`) or cannot pin down (`ANTIOCH, TN`). Re-run `manage.py geocode_stations` to see the
 full report.
+
+**Map tiles do not come from openstreetmap.org.** Its tile CDN rejects third-party applications
+outright — it answers with `x-blocked: Access denied` and a placeholder image rather than a map,
+which is its usage policy being enforced rather than a bug. The map uses CARTO's free basemaps
+instead, with attribution to both OpenStreetMap and CARTO. `MAP_TILE_URL` accepts any raster tile
+provider. Tiles are fetched by the browser, so they cost the API nothing.
 
 **OSRM's public demo server** has no uptime guarantee. It is free and needs no key, which suits an
 exercise; production would want a self-hosted instance or a paid provider. Set `OSRM_BASE_URL` to
