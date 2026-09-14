@@ -166,6 +166,52 @@ def test_no_stop_buys_a_pointlessly_small_amount():
     ]
 
 
+def test_never_buys_fuel_the_trip_will_not_burn():
+    """The minimum-purchase round-up must not apply near the finish.
+
+    Mid-route, buying a few extra gallons is harmless: it displaces fuel bought later. At the end
+    of the trip there is no later, so rounding a small top-up up to the minimum would pay for fuel
+    that is never burned.
+    """
+    # Reaches mile 600 with the tank nearly dry, needing only a splash to cover the last 4 miles.
+    stations = candidates((100.0, 3.00), (600.0, 2.90))
+    result = plan(stations, total_miles=604.0, min_purchase_gallons=5.0)
+
+    assert result.purchased_gallons <= result.burned_gallons + 1e-9, (
+        f"bought {result.purchased_gallons:.2f} gal but the trip only burns "
+        f"{result.burned_gallons:.2f}"
+    )
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_more_stations_is_never_more_expensive(seed):
+    """Widening the corridor must not make the answer worse.
+
+    This is what caught the end-of-trip bug: rounding a final top-up up to the minimum purchase
+    made a wider search *more* expensive, because it bought fuel the trip never burned. Gaps are
+    kept short so that dropping stations leaves a route that is still drivable and comparable.
+    """
+    rng = random.Random(seed)
+    positions, mile = [], 0.0
+    for _ in range(9):
+        mile += rng.uniform(50, 150)
+        positions.append(round(mile, 3))
+    prices = [round(rng.uniform(2.5, 4.5), 3) for _ in positions]
+    total = round(positions[-1] + rng.uniform(10, 300), 3)
+
+    everything = candidates(*zip(positions, prices))
+    # Drop a third of them, as a narrower corridor would.
+    subset = [c for index, c in enumerate(everything) if index % 3 != 1]
+
+    wide = plan(everything, total, min_purchase_gallons=5.0)
+    narrow = plan(subset, total, min_purchase_gallons=5.0)
+
+    assert wide.purchased_cost <= narrow.purchased_cost + 1e-6, (
+        f"more choice cost more: {wide.purchased_cost:.2f} with all stations vs "
+        f"{narrow.purchased_cost:.2f} with fewer"
+    )
+
+
 def test_a_forced_purchase_is_never_skipped_for_being_small():
     """The minimum must not strand the vehicle: fuel needed to continue is always bought."""
     stations = candidates((490.0, 3.00), (980.0, 3.00))

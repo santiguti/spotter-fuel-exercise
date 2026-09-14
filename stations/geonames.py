@@ -11,6 +11,7 @@ Nothing in this module runs during a web request.
 from __future__ import annotations
 
 import io
+import math
 import re
 import urllib.request
 import zipfile
@@ -102,13 +103,14 @@ class Place:
     population: int
 
 
-def build_city_index(dump_path: Path) -> dict[tuple[str, str], Place]:
-    """Map (normalized city, state) to a Place, for every US populated place.
+# Two places of the same name this far apart cannot both be "close enough": picking the wrong one
+# would put a station on a route it is nowhere near. Matches settings.CORRIDOR_MILES.
+AMBIGUITY_TOLERANCE_MILES = 25.0
 
-    Where a state has several places with the same normalized name, the most populous wins:
-    "Springfield, IL" should be the city of 115,000, not the hamlet that shares its name.
-    """
-    index: dict[tuple[str, str], Place] = {}
+
+def build_city_candidates(dump_path: Path) -> dict[tuple[str, str], list[Place]]:
+    """Map (normalized city, state) to every US populated place with that name."""
+    candidates: dict[tuple[str, str], list[Place]] = {}
     with zipfile.ZipFile(dump_path) as archive:
         with archive.open("US.txt") as handle:
             for raw_line in io.TextIOWrapper(handle, encoding="utf-8"):
@@ -123,8 +125,48 @@ def build_city_index(dump_path: Path) -> dict[tuple[str, str], Place]:
                     longitude=float(fields[_COL_LONGITUDE]),
                     population=int(fields[_COL_POPULATION] or 0),
                 )
-                key = (normalize_city(place.name), state)
-                incumbent = index.get(key)
-                if incumbent is None or place.population > incumbent.population:
-                    index[key] = place
-    return index
+                candidates.setdefault((normalize_city(place.name), state), []).append(place)
+    return candidates
+
+
+def resolve_place(places: list[Place]) -> Place | None:
+    """Pick which place a town name refers to, or None when the data cannot say.
+
+    Population usually decides it: "Springfield, IL" is the city of 115,000, not the hamlet that
+    shares its name. But GeoNames records a population of 0 for most small places, so the twelve
+    Tennessee towns called Antioch are all tied — and file order is not evidence. When the tie is
+    between places far enough apart to matter, this returns None and the station is dropped.
+    Missing data is honest; confidently wrong coordinates put a station on a route it is not on.
+    """
+    if not places:
+        return None
+
+    best = max(places, key=lambda place: place.population)
+    tied = [place for place in places if place.population == best.population]
+    if len(tied) == 1:
+        return best
+
+    # Tied. Only safe if every candidate is close enough that the choice does not matter.
+    for place in tied:
+        if _rough_miles(place, tied[0]) > AMBIGUITY_TOLERANCE_MILES:
+            return None
+    return tied[0]
+
+
+def _rough_miles(a: Place, b: Place) -> float:
+    """Good enough to tell "same town, slightly different record" from "150 miles apart"."""
+    north = (a.latitude - b.latitude) * 69.0
+    east = (a.longitude - b.longitude) * 69.0 * math.cos(math.radians(a.latitude))
+    return math.hypot(north, east)
+
+
+def build_city_index(dump_path: Path) -> dict[tuple[str, str], Place]:
+    """Map (normalized city, state) to the one place that name refers to.
+
+    Names the data cannot pin down are absent rather than guessed at.
+    """
+    return {
+        key: place
+        for key, places in build_city_candidates(dump_path).items()
+        if (place := resolve_place(places)) is not None
+    }

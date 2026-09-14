@@ -21,7 +21,7 @@ Requires Python 3.12 or newer (Django 6.1).
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python manage.py migrate
-./.venv/bin/python manage.py load_stations     # loads 6,605 stations, ~1 second
+./.venv/bin/python manage.py load_stations     # loads 6,576 stations, ~1 second
 ./.venv/bin/python manage.py runserver
 ```
 
@@ -78,7 +78,7 @@ Run the tests with `./.venv/bin/pytest`.
 
   "route": { "type": "LineString", "coordinates": [[-96.80667, 32.78306], "..."] },
   "assumptions":  { "vehicle_range_miles": 500.0, "miles_per_gallon": 10.0,
-                    "started_with_full_tank": true, "max_detour_off_route_miles": 25.0 },
+                    "started_with_full_tank": true, "max_detour_off_route_miles": 10.0 },
   "performance":  { "routing_api_calls": 1, "stations_in_corridor": 437, "elapsed_ms": 412.0 },
   "map_url": "http://localhost:8000/map/?start=Dallas,+TX&finish=New+York,+NY"
 }
@@ -110,7 +110,7 @@ happens at request time:
 
 | Step | Cost at request time |
 |---|---|
-| Geocode 6,605 stations | **0** — done once, offline, committed as `stations/data/stations_geocoded.csv` |
+| Geocode 6,576 stations | **0** — done once, offline, committed as `stations/data/stations_geocoded.csv` |
 | Resolve the caller's start and finish | **0** — a committed 17,453-city lookup table |
 | Fetch the driving route | **1** — OSRM, cached for an hour |
 | Find stations along the route | **0** — in memory |
@@ -129,10 +129,10 @@ A test asserts the call count, because this is the kind of constraint that regre
 | Phoenix → Chicago | 2.22 s | **0.025 s** |
 
 About 2.1 s of the cold figure is OSRM's own response time. Everything this service does — scanning
-6,605 stations against the route and planning the stops — is roughly 25 ms.
+6,576 stations against the route and planning the stops — is roughly 25 ms.
 
 Two things make that possible. The 6,605 stations are read into memory once per process rather than
-queried per request. And the corridor scan, which would naively be 6,605 stations × 21,000 route
+queried per request. And the corridor scan, which would naively be 6,576 stations × 21,000 route
 points ≈ 139 million distance calculations, thins the route to one point per mile and buckets those
 points into a coordinate grid, so each station only examines the few points that could be near it.
 A station in Florida never looks at a route point in Montana.
@@ -171,16 +171,21 @@ It costs **0.18%** — $1.53 on an $850 trip — and turns 20 stops into 13. Pas
 ## Assumptions and limitations
 
 **Station coordinates are town centroids**, not the pumps themselves, so a station can sit a few
-miles from where it really is. The 25-mile corridor absorbs this. The better source is the
+miles from where it really is. The 10-mile corridor absorbs this. The better source is the
 `Address` column — `I-44, EXIT 283 & US-69` names the exact interstate and exit — but converting
 exits to coordinates needs a highway-exit dataset that no free service exposes as cleanly as
 GeoNames exposes towns. That is the first thing to improve with more time.
 
-**Same-named towns can be geocoded to the wrong one.** Tennessee has twelve places called Antioch,
-all recorded with a population of zero, so the "most populous wins" tie-break falls back to file
-order. Measured: 470 of 6,605 stations (7.1%) sit in a town whose name is ambiguous within its
-state; population resolves 94% of those; **29 stations (0.4%)** are tied with candidates more than
-25 miles apart and could be placed wrongly. The fix is the same missing dataset as above.
+**Stations whose town cannot be identified are dropped, not guessed at.** Tennessee has twelve
+places called Antioch, all recorded with a population of zero, so a "most populous wins" tie-break
+would fall back to file order. Measured: 470 of 6,605 candidate stations (7.1%) sit in a town whose
+name is ambiguous within its state, and population settles 94% of those. The remaining **29 (0.4%)**
+are tied between places more than 25 miles apart, and those are excluded.
+
+This was worth doing rather than documenting. `THORNTONS #607` is listed at `Antioch, TN` with the
+address `I-24 EXIT 62`, and the arbitrary tie-break placed it 130 miles from that interstate — far
+enough to land it in the corridor of a route it is nowhere near, where it displaced a real stop.
+Missing data is honest; confidently wrong coordinates are not.
 
 **620 Canadian rows were dropped.** The nine non-US state codes (ON, AB, BC, MB, SK, YT, QC, NS, NB)
 are Trans-Canada highway addresses with Petro-Canada and Husky branding. The brief specifies routes
@@ -191,8 +196,8 @@ currency — mixing that into a dollar total would corrupt the result.
 (`PILOT TRAVEL CENTER #1243` and `PILOT #1243`), so the loader keeps one row per ID at the cheapest
 price. 8,151 rows become 6,605 stations.
 
-**Geocoding coverage is 99.71%** — 7,509 of 7,531 US rows. The 22 failures are towns GeoNames does
-not list under that name, such as `WILLOW BEACH, AZ`. Re-run `manage.py geocode_stations` to see the
+**Geocoding coverage is 99.32%** — 7,480 of 7,531 US rows, yielding 6,576 stations. The 51 failures
+are towns GeoNames does not list under that name (`WILLOW BEACH, AZ`) or cannot pin down (`ANTIOCH, TN`). Re-run `manage.py geocode_stations` to see the
 full report.
 
 **OSRM's public demo server** has no uptime guarantee. It is free and needs no key, which suits an

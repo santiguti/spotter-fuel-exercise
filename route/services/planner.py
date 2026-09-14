@@ -105,12 +105,18 @@ def plan_refuelling(
         if cheaper:
             # Buy only enough to get to the nearest cheaper fuel: anything more could have been
             # bought there for less. The exception is a purchase too small to be worth stopping
-            # for, which is rounded up to something a driver would actually buy — the extra fuel
-            # is not wasted, it just displaces fuel bought later.
+            # for, which is rounded up to something a driver would actually buy, since that extra
+            # fuel is not wasted — it displaces fuel that would be bought later.
+            #
+            # Except near the end of the trip, where there is no later. Rounding up there buys
+            # fuel the vehicle never burns, so the round-up is also capped at what it takes to
+            # reach the destination. Without this, a 0.4 gallon top-up four miles from the finish
+            # became a 5 gallon one, and the trip paid for 4.6 gallons it never used.
             target = cheaper[0]
             shortfall = (nodes[target].miles - node.miles) - fuel
             if shortfall > 0:
-                amount = min(max(shortfall, min_purchase_gallons * mpg), range_miles - fuel)
+                ceiling = min(range_miles - fuel, (total_miles - node.miles) - fuel)
+                amount = min(max(shortfall, min_purchase_gallons * mpg), ceiling)
                 purchased_miles += _buy(stops, node, amount, mpg)
                 fuel += amount
         else:

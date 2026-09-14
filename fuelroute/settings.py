@@ -142,9 +142,12 @@ FUEL_MPG = float(os.getenv("FUEL_MPG", "10"))
 FUEL_RANGE_MILES = float(os.getenv("FUEL_RANGE_MILES", "500"))
 
 # How far off the route a station may sit and still count as "on the way".
-# Station coordinates are town centroids (see stations/management/commands/geocode_stations.py),
-# so this also absorbs the few miles between a town centre and the truckstop at its highway exit.
-CORRIDOR_MILES = float(os.getenv("CORRIDOR_MILES", "25"))
+# Kept tight for two reasons. Station coordinates are town centroids (see geocode_stations.py),
+# so this absorbs the few miles between a town centre and the truckstop at its highway exit. And
+# the detour itself is not charged for: 20 miles off-route is a 40 mile round trip, about 4 gallons,
+# which would usually swallow the saving. Widening this without also charging for the detour would
+# let the planner pick stations that are cheaper on paper and dearer in practice.
+CORRIDOR_MILES = float(os.getenv("CORRIDOR_MILES", "10"))
 
 # Free, keyless routing. This is the only external service the request path touches.
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
