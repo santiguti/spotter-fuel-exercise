@@ -220,3 +220,22 @@ def test_map_page_renders_the_same_trip(client, stations, osrm):
 
     assert response.status_code == 200
     assert b"trip-data" in response.content
+
+
+def test_map_page_escapes_station_names(client, stations, osrm, db):
+    """Station and place names reach the page as text, never as markup.
+
+    Names come from a third-party price list and, on the geocoding fallback, from OpenStreetMap.
+    Django's json_script escapes them on the way into the page, and the script escapes them again
+    on the way into innerHTML.
+    """
+    hostile = "<img src=x onerror=alert(1)>TRUCKSTOP"
+    FuelStation.objects.filter(opis_id=2).update(name=hostile)
+    reload_stations()
+    cache.clear()
+
+    response = client.get(reverse("route-map"), {"start": "39.9, -100.0", "finish": "40.0, -75.1"})
+
+    assert response.status_code == 200
+    assert hostile.encode() not in response.content
+    assert b"<img src=x" not in response.content

@@ -137,6 +137,22 @@ def test_minimum_purchase_skips_pointless_stops():
     assert len(with_minimum.stops) < len(without_minimum.stops)
 
 
+def test_stops_stay_in_order_when_starting_empty():
+    """The departure fill-up must not appear out of sequence with the stops that follow it.
+
+    Starting empty inserts a fill-up before departure, priced from the cheapest station near the
+    origin. If that station were not also the earliest of the cheap ones, the first reported stop
+    could sit further along the route than the second.
+    """
+    stations = candidates(
+        (5.0, 3.00), (40.0, 3.00), (60.0, 2.95), (450.0, 2.50), (800.0, 3.20)
+    )
+    result = plan(stations, total_miles=1200.0, start_full=False)
+
+    miles = [stop.candidate.miles_from_start for stop in result.stops]
+    assert miles == sorted(miles), miles
+
+
 def test_no_stop_buys_a_pointlessly_small_amount():
     """Every stop in a plan should be one a driver would actually make."""
     stations = candidates(

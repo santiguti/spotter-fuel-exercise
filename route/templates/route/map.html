@@ -81,6 +81,13 @@
   if (!raw) return;
   const trip = JSON.parse(raw.textContent);
 
+  const money = (n) => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+  // Place names can come from OpenStreetMap, which is user-contributed, and station names come
+  // from a third-party price list. Neither is trusted enough to drop straight into innerHTML.
+  const esc = (s) => String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+
   const line = L.polyline(trip.route.coordinates.map(c => [c[1], c[0]]), {
     color: '#1b6ef3', weight: 4, opacity: 0.85
   }).addTo(map);
@@ -91,11 +98,9 @@
     iconSize: [14, 14], iconAnchor: [7, 7]
   });
   L.marker([trip.start.latitude, trip.start.longitude], {icon: dot('#137a43')})
-    .addTo(map).bindPopup(`<b>Start</b><br>${trip.start.name}`);
+    .addTo(map).bindPopup(`<b>Start</b><br>${esc(trip.start.name)}`);
   L.marker([trip.finish.latitude, trip.finish.longitude], {icon: dot('#c0392b')})
-    .addTo(map).bindPopup(`<b>Finish</b><br>${trip.finish.name}`);
-
-  const money = (n) => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    .addTo(map).bindPopup(`<b>Finish</b><br>${esc(trip.finish.name)}`);
 
   trip.fuel_stops.forEach(stop => {
     L.marker([stop.latitude, stop.longitude], {
@@ -107,8 +112,8 @@
         iconSize: [24, 24], iconAnchor: [12, 12]
       })
     }).addTo(map).bindPopup(
-      `<b>${stop.name}</b><br>${stop.city}, ${stop.state}<br>` +
-      `${stop.address ? stop.address + '<br>' : ''}` +
+      `<b>${esc(stop.name)}</b><br>${esc(stop.city)}, ${esc(stop.state)}<br>` +
+      `${stop.address ? esc(stop.address) + '<br>' : ''}` +
       `<br><b>${money(stop.price_per_gallon)}</b>/gal &middot; ${stop.gallons.toFixed(1)} gal ` +
       `&middot; <b>${money(stop.cost_usd)}</b><br>` +
       `<span style="color:#6b7078">mile ${stop.distance_from_start_miles.toLocaleString()} ` +
@@ -123,8 +128,8 @@
     <div class="stop">
       <div class="badge">${s.order}</div>
       <div>
-        <div class="name">${s.name}</div>
-        <div class="meta">${s.city}, ${s.state} &middot; mile ${s.distance_from_start_miles.toLocaleString()}</div>
+        <div class="name">${esc(s.name)}</div>
+        <div class="meta">${esc(s.city)}, ${esc(s.state)} &middot; mile ${s.distance_from_start_miles.toLocaleString()}</div>
       </div>
       <div class="cost"><b>${money(s.cost_usd)}</b><span>${s.gallons.toFixed(1)} gal @ ${money(s.price_per_gallon)}</span></div>
     </div>`).join('');

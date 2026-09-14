@@ -14,7 +14,7 @@ from django.conf import settings
 
 from route.services.corridor import stations_along_route, thin_route
 from route.services.geocode import Location, resolve
-from route.services.planner import FuelPlan, plan_refuelling
+from route.services.planner import MIN_PURCHASE_GALLONS, FuelPlan, plan_refuelling
 from route.services.routing import Route, fetch_route
 from stations.repository import all_stations
 
@@ -55,7 +55,7 @@ def plan_trip(
         settings.FUEL_RANGE_MILES,
         settings.FUEL_MPG,
         start_full,
-        **({} if min_purchase_gallons is None else {"min_purchase_gallons": min_purchase_gallons}),
+        MIN_PURCHASE_GALLONS if min_purchase_gallons is None else min_purchase_gallons,
     )
 
     return Trip(
@@ -70,7 +70,7 @@ def plan_trip(
     )
 
 
-def to_payload(trip: Trip, *, include_geometry: bool = True) -> dict:
+def to_payload(trip: Trip) -> dict:
     """Shape a trip as the JSON the API returns."""
     plan: FuelPlan = trip.plan
 
@@ -123,11 +123,7 @@ def to_payload(trip: Trip, *, include_geometry: bool = True) -> dict:
         },
     }
 
-    if include_geometry:
-        payload["route"] = {
-            "type": "LineString",
-            "coordinates": route_geometry(trip.route),
-        }
+    payload["route"] = {"type": "LineString", "coordinates": route_geometry(trip.route)}
     return payload
 
 
