@@ -104,15 +104,17 @@ def _resolve_via_nominatim(text: str) -> Location:
         )
         response.raise_for_status()
         results = response.json()
-    except requests.RequestException as exc:
+    except (requests.RequestException, ValueError) as exc:
         raise LocationNotFound(f"Could not look up {text!r}: {exc}") from exc
 
-    if not results:
-        raise LocationNotFound(f"No location in the USA matches {text!r}")
-    best = results[0]
-    return Location(
-        best.get("display_name", text), float(best["lat"]), float(best["lon"]), "nominatim"
-    )
+    # Anything unexpected from a third party reads as "not found" rather than a 500.
+    try:
+        best = results[0]
+        return Location(
+            best.get("display_name", text), float(best["lat"]), float(best["lon"]), "nominatim"
+        )
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise LocationNotFound(f"No location in the USA matches {text!r}") from None
 
 
 def resolve(text: str) -> Location:

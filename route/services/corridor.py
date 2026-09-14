@@ -49,7 +49,7 @@ def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     return 2 * EARTH_RADIUS_MILES * math.asin(math.sqrt(a))
 
 
-def _thin_route(route: Route) -> list[tuple[float, float, float]]:
+def thin_route(route: Route) -> list[tuple[float, float, float]]:
     """Reduce the route to (latitude, longitude, miles_from_start), about one point per mile."""
     points: list[tuple[float, float, float]] = []
     last_kept = -ROUTE_POINT_SPACING_MILES
@@ -67,7 +67,7 @@ def stations_along_route(
     route: Route, stations: tuple[Station, ...], corridor_miles: float
 ) -> list[CandidateStation]:
     """Every station within corridor_miles of the route, ordered by distance from the start."""
-    points = _thin_route(route)
+    points = thin_route(route)
     cell_size = corridor_miles / MILES_PER_DEGREE_LONGITUDE_MIN
 
     grid: dict[tuple[int, int], list[tuple[float, float, float]]] = {}

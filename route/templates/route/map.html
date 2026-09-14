@@ -1,0 +1,153 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fuel Route Optimizer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --ink:#1c1d20; --muted:#6b7078; --line:#e2e5ea; --accent:#1b6ef3; --good:#137a43; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink); }
+  .layout { display:flex; height:100vh; }
+  .panel { width:380px; flex:none; border-right:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; }
+  .panel header { padding:16px; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 2px; font-size:16px; }
+  .sub { color:var(--muted); font-size:12px; }
+  form { padding:16px; border-bottom:1px solid var(--line); display:grid; gap:8px; }
+  label { font-size:12px; color:var(--muted); }
+  input[type=text] { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .row { display:flex; gap:12px; align-items:center; font-size:12px; color:var(--muted); }
+  button { padding:9px 12px; border:0; border-radius:6px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  .scroll { overflow-y:auto; flex:1; }
+  .totals { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line); border-bottom:1px solid var(--line); }
+  .totals div { background:#fff; padding:12px 16px; }
+  .totals .v { font-size:20px; font-weight:650; letter-spacing:-.02em; }
+  .totals .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .stop { display:grid; grid-template-columns:26px 1fr auto; gap:10px; padding:11px 16px; border-bottom:1px solid var(--line); }
+  .badge { width:22px; height:22px; border-radius:50%; background:var(--ink); color:#fff; font-size:11px; font-weight:700; display:grid; place-items:center; }
+  .stop .name { font-weight:600; }
+  .stop .meta { color:var(--muted); font-size:12px; }
+  .stop .cost { text-align:right; font-variant-numeric:tabular-nums; }
+  .stop .cost b { display:block; }
+  .stop .cost span { color:var(--muted); font-size:12px; }
+  .note { padding:14px 16px; color:var(--muted); font-size:12px; }
+  .error { margin:16px; padding:12px; border:1px solid #f0c3c3; background:#fdf2f2; color:#9a2020; border-radius:6px; }
+  #map { flex:1; }
+  .leaflet-popup-content { margin:10px 12px; font:13px/1.45 system-ui,sans-serif; }
+  @media (max-width:800px){ .layout{flex-direction:column;} .panel{width:auto;height:55vh;border-right:0;border-bottom:1px solid var(--line);} }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="panel">
+    <header>
+      <h1>Fuel Route Optimizer</h1>
+      <div class="sub">Cheapest fuel stops for a 500&nbsp;mile range, 10&nbsp;mpg vehicle</div>
+    </header>
+
+    <form method="get" action="/map/">
+      <div>
+        <label for="start">Start</label>
+        <input type="text" id="start" name="start" value="{{ start }}" placeholder="Dallas, TX" required>
+      </div>
+      <div>
+        <label for="finish">Finish</label>
+        <input type="text" id="finish" name="finish" value="{{ finish }}" placeholder="New York, NY" required>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" name="start_full" value="false" {% if request.GET.start_full == "false" %}checked{% endif %}> Start with an empty tank</label>
+      </div>
+      <button type="submit">Plan route</button>
+    </form>
+
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <div class="scroll" id="results"></div>
+  </div>
+  <div id="map"></div>
+</div>
+
+{{ trip|json_script:"trip-data" }}
+<script>
+(function () {
+  const map = L.map('map').setView([39.5, -98.35], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const raw = document.getElementById('trip-data');
+  if (!raw) return;
+  const trip = JSON.parse(raw.textContent);
+
+  const line = L.polyline(trip.route.coordinates.map(c => [c[1], c[0]]), {
+    color: '#1b6ef3', weight: 4, opacity: 0.85
+  }).addTo(map);
+
+  const dot = (color) => L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)"></div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7]
+  });
+  L.marker([trip.start.latitude, trip.start.longitude], {icon: dot('#137a43')})
+    .addTo(map).bindPopup(`<b>Start</b><br>${trip.start.name}`);
+  L.marker([trip.finish.latitude, trip.finish.longitude], {icon: dot('#c0392b')})
+    .addTo(map).bindPopup(`<b>Finish</b><br>${trip.finish.name}`);
+
+  const money = (n) => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+  trip.fuel_stops.forEach(stop => {
+    L.marker([stop.latitude, stop.longitude], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:24px;height:24px;border-radius:50%;background:#1c1d20;color:#fff;
+               font:700 12px/24px system-ui,sans-serif;text-align:center;border:2px solid #fff;
+               box-shadow:0 1px 4px rgba(0,0,0,.4)">${stop.order}</div>`,
+        iconSize: [24, 24], iconAnchor: [12, 12]
+      })
+    }).addTo(map).bindPopup(
+      `<b>${stop.name}</b><br>${stop.city}, ${stop.state}<br>` +
+      `${stop.address ? stop.address + '<br>' : ''}` +
+      `<br><b>${money(stop.price_per_gallon)}</b>/gal &middot; ${stop.gallons.toFixed(1)} gal ` +
+      `&middot; <b>${money(stop.cost_usd)}</b><br>` +
+      `<span style="color:#6b7078">mile ${stop.distance_from_start_miles.toLocaleString()} ` +
+      `&middot; ${stop.miles_off_route} mi off route</span>`
+    );
+  });
+
+  map.fitBounds(line.getBounds(), {padding: [40, 40]});
+
+  const results = document.getElementById('results');
+  const stops = trip.fuel_stops.map(s => `
+    <div class="stop">
+      <div class="badge">${s.order}</div>
+      <div>
+        <div class="name">${s.name}</div>
+        <div class="meta">${s.city}, ${s.state} &middot; mile ${s.distance_from_start_miles.toLocaleString()}</div>
+      </div>
+      <div class="cost"><b>${money(s.cost_usd)}</b><span>${s.gallons.toFixed(1)} gal @ ${money(s.price_per_gallon)}</span></div>
+    </div>`).join('');
+
+  results.innerHTML = `
+    <div class="totals">
+      <div><div class="k">Fuel cost</div><div class="v">${money(trip.total_cost_usd)}</div></div>
+      <div><div class="k">Distance</div><div class="v">${trip.total_distance_miles.toLocaleString()} mi</div></div>
+      <div><div class="k">Fuel stops</div><div class="v">${trip.fuel_stops.length}</div></div>
+      <div><div class="k">Gallons</div><div class="v">${trip.total_gallons_purchased.toFixed(1)}</div></div>
+    </div>
+    ${stops || '<div class="note">No fuel stops needed &mdash; this trip fits inside one tank.</div>'}
+    <div class="note">
+      ${trip.assumptions.started_with_full_tank
+        ? `Started with a full tank, so the first ${trip.assumptions.vehicle_range_miles.toLocaleString()} miles
+           are not charged. All fuel for the trip would be ${money(trip.total_cost_including_starting_tank_usd)}.`
+        : `Tank started empty, so every gallon burned is paid for.`}
+      <br><br>
+      ${trip.performance.routing_api_calls} routing API call &middot;
+      ${trip.performance.stations_in_corridor.toLocaleString()} stations considered &middot;
+      ${trip.performance.elapsed_ms} ms
+    </div>`;
+})();
+</script>
+</body>
+</html>

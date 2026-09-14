@@ -19,7 +19,15 @@ CACHE_TIMEOUT_SECONDS = 60 * 60
 
 
 class RoutingError(RuntimeError):
-    """The routing service could not produce a route."""
+    """The routing service itself failed: down, timed out, or returned something unusable."""
+
+
+class NoRouteFound(RoutingError):
+    """The service worked fine, but no road connects these two places.
+
+    Distinct from RoutingError because it is the caller's problem, not ours: asking to drive from
+    Honolulu to Dallas is a bad request, not an outage, and must not read as one.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,14 +68,21 @@ def fetch_route(
             },
             timeout=settings.OSRM_TIMEOUT_SECONDS,
         )
-        response.raise_for_status()
+        # Not raise_for_status: OSRM reports "these places aren't connected by road" as a 400 with
+        # a JSON body, and that is a different thing from the service being broken.
         payload = response.json()
-    except requests.RequestException as exc:
+    except (requests.RequestException, ValueError) as exc:
         raise RoutingError(f"Routing service unavailable: {exc}") from exc
 
-    if payload.get("code") != "Ok" or not payload.get("routes"):
+    code = payload.get("code")
+    if code in {"NoRoute", "NoSegment"}:
+        raise NoRouteFound(
+            "No drivable route between those locations. Both must be reachable by road, "
+            "so islands such as Hawaii cannot be routed to or from."
+        )
+    if code != "Ok" or not payload.get("routes"):
         raise RoutingError(
-            f"No drivable route between those locations ({payload.get('code', 'unknown')})"
+            f"Routing service returned an error: {payload.get('message', code or 'unknown')}"
         )
 
     route = _parse(payload["routes"][0])
