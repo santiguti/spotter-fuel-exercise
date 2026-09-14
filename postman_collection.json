@@ -1,0 +1,187 @@
+{
+  "info": {
+    "name": "Fuel Route Optimizer",
+    "description": "Django API returning a route, the cost-optimal fuel stops for a 500 mile / 10 mpg vehicle, and the total fuel cost. One routing API call per request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000" }
+  ],
+  "item": [
+    {
+      "name": "Long route - Dallas to New York",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Dallas, TX&finish=New York, NY",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Dallas, TX" },
+            { "key": "finish", "value": "New York, NY" }
+          ]
+        },
+        "description": "1,549 miles, 6 fuel stops, about $302. Note performance.routing_api_calls = 1."
+      }
+    },
+    {
+      "name": "Same route again - served from cache",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Dallas, TX&finish=New York, NY",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Dallas, TX" },
+            { "key": "finish", "value": "New York, NY" }
+          ]
+        },
+        "description": "Identical request. routing_api_calls drops to 0 and the response returns in ~25 ms."
+      }
+    },
+    {
+      "name": "Cross country - Miami to Seattle",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Miami, FL&finish=Seattle, WA",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Miami, FL" },
+            { "key": "finish", "value": "Seattle, WA" }
+          ]
+        },
+        "description": "3,303 miles, 13 stops. Prices climb heading north-west, which the plan reflects."
+      }
+    },
+    {
+      "name": "Short route - fits in one tank, no stops",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Dallas, TX&finish=Austin, TX",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Dallas, TX" },
+            { "key": "finish", "value": "Austin, TX" }
+          ]
+        },
+        "description": "195 miles. Zero stops and $0, because the vehicle starts with 500 miles of range."
+      }
+    },
+    {
+      "name": "Starting with an empty tank",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Dallas, TX&finish=New York, NY&start_full=false",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Dallas, TX" },
+            { "key": "finish", "value": "New York, NY" },
+            { "key": "start_full", "value": "false" }
+          ]
+        },
+        "description": "Same drive, every gallon paid for: about $439 instead of $302. The brief does not say which model applies, so both are available and both totals are always reported."
+      }
+    },
+    {
+      "name": "Strict mathematical optimum",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Miami, FL&finish=Seattle, WA&min_purchase_gallons=0",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Miami, FL" },
+            { "key": "finish", "value": "Seattle, WA" },
+            { "key": "min_purchase_gallons", "value": "0" }
+          ]
+        },
+        "description": "Removes the minimum-purchase rule: 20 stops instead of 13, some buying a tenth of a gallon, and $1.50 cheaper on $849."
+      }
+    },
+    {
+      "name": "Coordinates instead of place names",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=32.7767,-96.7970&finish=39.7392,-104.9903",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "32.7767,-96.7970" },
+            { "key": "finish", "value": "39.7392,-104.9903" }
+          ]
+        },
+        "description": "Raw latitude,longitude is accepted too."
+      }
+    },
+    {
+      "name": "Error - missing parameter (400)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Dallas, TX",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [{ "key": "start", "value": "Dallas, TX" }]
+        },
+        "description": "400 with the missing parameter named and an example."
+      }
+    },
+    {
+      "name": "Error - unknown place (400)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Nowheresville, ZZ&finish=Dallas, TX",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Nowheresville, ZZ" },
+            { "key": "finish", "value": "Dallas, TX" }
+          ]
+        },
+        "description": "400. The place cannot be resolved locally or by the geocoding fallback."
+      }
+    },
+    {
+      "name": "Error - undrivable route (422, not 502)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/route/?start=Honolulu, HI&finish=Dallas, TX",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "route", ""],
+          "query": [
+            { "key": "start", "value": "Honolulu, HI" },
+            { "key": "finish", "value": "Dallas, TX" }
+          ]
+        },
+        "description": "422, because the routing service worked fine and the request is simply impossible. An outage would be a 502."
+      }
+    },
+    {
+      "name": "Map page",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/map/?start=Dallas, TX&finish=New York, NY",
+          "host": ["{{baseUrl}}"],
+          "path": ["map", ""],
+          "query": [
+            { "key": "start", "value": "Dallas, TX" },
+            { "key": "finish", "value": "New York, NY" }
+          ]
+        },
+        "description": "Open in a browser: the route drawn with numbered fuel stops, prices and totals."
+      }
+    }
+  ]
+}
