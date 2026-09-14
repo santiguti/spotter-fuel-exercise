@@ -156,18 +156,23 @@ OSRM_TIMEOUT_SECONDS = float(os.getenv("OSRM_TIMEOUT_SECONDS", "20"))
 # Background tiles for the map page. These are fetched by the browser, not by this server, so they
 # cost the API nothing.
 #
-# Not openstreetmap.org: its tile CDN now rejects third-party apps outright, answering with
-# "x-blocked: Access denied" and a placeholder image rather than a map. Its usage policy asks that
-# applications not hotlink its tiles, and it enforces that. CARTO publishes these basemaps for free
-# use with attribution, needs no API key, and the light style keeps the route line legible.
+# Two providers were rejected before this one, and both failed the same way: an HTTP 200 with a
+# perfectly valid PNG that is not a map. openstreetmap.org returns "x-blocked: Access denied" with a
+# placeholder, and CARTO returns tiles stamped "API KEY REQUIRED". Neither is detectable by status
+# code, so check a tile by looking at it, not by reading the response.
+#
+# Esri's ArcGIS basemaps are free to use with attribution and need no key. World_Street_Map also
+# draws interstate shields, which matters here: the stations are at named exits like "I-40 EXIT 172".
+# Note the {z}/{y}/{x} order — Esri puts row before column, unlike most providers.
 MAP_TILE_URL = os.getenv(
-    "MAP_TILE_URL", "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+    "MAP_TILE_URL",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
 )
-MAP_TILE_SUBDOMAINS = os.getenv("MAP_TILE_SUBDOMAINS", "abcd")
+MAP_TILE_SUBDOMAINS = os.getenv("MAP_TILE_SUBDOMAINS", "abc")
 MAP_TILE_ATTRIBUTION = os.getenv(
     "MAP_TILE_ATTRIBUTION",
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors '
-    '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+    'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, HERE, Garmin, USGS, '
+    'NGA, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 )
 
 # Geocoding fallback for free-text locations that the local city index cannot resolve.

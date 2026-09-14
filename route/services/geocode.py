@@ -57,12 +57,23 @@ def _city_index() -> dict[tuple[str, str], tuple[str, float, float]]:
     Each city is registered under every spelling someone might type for it, so "New York, NY"
     finds the place GeoNames calls "New York City".
     """
-    index: dict[tuple[str, str], tuple[str, float, float]] = {}
     with CITY_DATASET.open(newline="", encoding="utf-8") as handle:
-        for row in csv.DictReader(handle):
-            entry = (row["city"], float(row["latitude"]), float(row["longitude"]))
-            for alias in name_aliases(row["city"]):
-                index.setdefault((alias, row["state"]), entry)
+        rows = [
+            (row["state"], row["city"], float(row["latitude"]), float(row["longitude"]))
+            for row in csv.DictReader(handle)
+        ]
+
+    # Real names are registered first, and aliases only fill gaps they leave. Iowa has both
+    # Rockwell and Rockwell City; the alias that lets "New York" find "New York City" would
+    # otherwise let "Rockwell City" claim the name of a different town 60 miles away. Doing it
+    # in two passes makes that impossible rather than dependent on the order of the file.
+    index: dict[tuple[str, str], tuple[str, float, float]] = {
+        (normalize_city(city), state): (city, latitude, longitude)
+        for state, city, latitude, longitude in rows
+    }
+    for state, city, latitude, longitude in rows:
+        for alias in name_aliases(city):
+            index.setdefault((alias, state), (city, latitude, longitude))
     return index
 
 

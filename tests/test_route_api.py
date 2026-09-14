@@ -172,7 +172,14 @@ def test_the_route_payload_is_thinned(client, stations, osrm):
         ({"start_full": "maybe"}, 400),
         ({"min_purchase_gallons": "lots"}, 400),
         ({"min_purchase_gallons": "-5"}, 400),
+        # float() parses these; NaN is the dangerous one because every comparison against it is
+        # false, so it silently changes the plan instead of failing anywhere.
+        ({"min_purchase_gallons": "nan"}, 400),
+        ({"min_purchase_gallons": "inf"}, 400),
+        ({"min_purchase_gallons": "1e400"}, 400),
+        ({"min_purchase_gallons": "500"}, 400),  # larger than the tank
         ({"start": "Nowheresville, ZZ"}, 400),
+        ({"start": "X" * 500 + ", TX"}, 400),  # junk must not reach the geocoding fallback
     ],
 )
 def test_bad_input_is_rejected_with_an_explanation(client, stations, osrm, params, expected):

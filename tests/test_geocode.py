@@ -33,6 +33,25 @@ def test_new_york_matches_geonames_new_york_city():
     assert resolve("New York, NY").label == resolve("New York City, NY").label
 
 
+@pytest.mark.parametrize(
+    "shorter,longer",
+    [
+        ("Rockwell, IA", "Rockwell City, IA"),
+        ("Clay, KY", "Clay City, KY"),
+        ("Wayne, IL", "Wayne City, IL"),
+        ("Makakilo, HI", "Makakilo City, HI"),
+    ],
+)
+def test_city_suffix_alias_never_shadows_a_real_town(shorter, longer):
+    """The alias that makes "New York" find "New York City" must not hijack a real name.
+
+    Iowa has both Rockwell and Rockwell City, 60 miles apart. Each must resolve to itself.
+    """
+    assert resolve(shorter).label == shorter
+    assert resolve(longer).label == longer
+    assert resolve(shorter) != resolve(longer)
+
+
 def test_state_may_be_a_code_or_a_full_name():
     assert resolve("Dallas, TX") == resolve("Dallas, Texas")
 

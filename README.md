@@ -200,11 +200,13 @@ price. 8,151 rows become 6,605, and 6,576 after the ambiguous ones above are exc
 are towns GeoNames does not list under that name (`WILLOW BEACH, AZ`) or cannot pin down (`ANTIOCH, TN`). Re-run `manage.py geocode_stations` to see the
 full report.
 
-**Map tiles do not come from openstreetmap.org.** Its tile CDN rejects third-party applications
-outright — it answers with `x-blocked: Access denied` and a placeholder image rather than a map,
-which is its usage policy being enforced rather than a bug. The map uses CARTO's free basemaps
-instead, with attribution to both OpenStreetMap and CARTO. `MAP_TILE_URL` accepts any raster tile
-provider. Tiles are fetched by the browser, so they cost the API nothing.
+**Map tiles come from Esri, not OpenStreetMap.** Two providers were tried first and both failed
+the same way — an HTTP 200 carrying a valid PNG that is not a map. openstreetmap.org returns
+`x-blocked: Access denied` with a placeholder (its tile policy, enforced), and CARTO returns tiles
+stamped "API KEY REQUIRED". Neither is detectable from the response status, so a tile has to be
+looked at rather than checked. Esri's basemaps are free with attribution, need no key, and draw
+interstate shields, which suits stations addressed as `I-40 EXIT 172`. `MAP_TILE_URL` accepts any
+raster provider. Tiles are fetched by the browser, so they cost the API nothing.
 
 **OSRM's public demo server** has no uptime guarantee. It is free and needs no key, which suits an
 exercise; production would want a self-hosted instance or a paid provider. Set `OSRM_BASE_URL` to

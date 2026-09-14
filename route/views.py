@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -15,6 +16,11 @@ from route.services.trip import plan_trip, to_payload
 
 TRUTHY = {"1", "true", "yes", "on"}
 FALSY = {"0", "false", "no", "off"}
+
+# Generous next to any real "City, State", short enough to keep junk out of the geocoder.
+MAX_LOCATION_LENGTH = 200
+# Buying more than a tankful in one stop is not a thing.
+MAX_MIN_PURCHASE_GALLONS = settings.FUEL_RANGE_MILES / settings.FUEL_MPG
 
 
 class BadRequest(ValueError):
@@ -32,6 +38,14 @@ def _read_parameters(request: HttpRequest) -> dict:
             'Example: ?start=Dallas, TX&finish=New York, NY'
         )
 
+    # No real place name is this long. Capping it here keeps junk out of the geocoding fallback,
+    # which would otherwise forward it to a third-party service that fuzzy-matches almost anything.
+    for name, value in (("start", start), ("finish", finish)):
+        if len(value) > MAX_LOCATION_LENGTH:
+            raise BadRequest(
+                f"{name} is too long: {len(value)} characters, maximum {MAX_LOCATION_LENGTH}"
+            )
+
     raw_start_full = request.GET.get("start_full", "true").strip().lower()
     if raw_start_full not in TRUTHY | FALSY:
         raise BadRequest("start_full must be true or false")
@@ -48,8 +62,17 @@ def _read_parameters(request: HttpRequest) -> dict:
             minimum = float(raw_minimum)
         except ValueError:
             raise BadRequest("min_purchase_gallons must be a number") from None
+        # float() happily parses "nan" and "inf". NaN is the dangerous one: every comparison
+        # against it is false, so it would not fail anywhere — it would quietly produce a
+        # different, worse plan and return it as though nothing were wrong.
+        if not math.isfinite(minimum):
+            raise BadRequest("min_purchase_gallons must be a finite number")
         if minimum < 0:
             raise BadRequest("min_purchase_gallons cannot be negative")
+        if minimum > MAX_MIN_PURCHASE_GALLONS:
+            raise BadRequest(
+                f"min_purchase_gallons cannot exceed the tank, {MAX_MIN_PURCHASE_GALLONS:.0f} gallons"
+            )
         parameters["min_purchase_gallons"] = minimum
 
     return parameters
