@@ -14,9 +14,22 @@ import io
 import re
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 GEONAMES_URL = "https://download.geonames.org/export/dump/US.zip"
+
+# us_cities.csv resolves the start and finish the caller types, offline. It is the union of:
+#
+#   1. every town that has a station in the price list, whatever its size. Big Cabin, OK has a
+#      population of ~300 and a truckstop, and is exactly the sort of place this API gets asked
+#      about. The CSV decides this set, not a population threshold.
+#   2. cities above this population, which exist only to cover endpoints the price list cannot
+#      know about: 36 of the 100 largest US cities have no truckstop at all, because truckstops
+#      sit on interstates outside the city. New York, Los Angeles and Houston are all in that gap.
+#
+# So population is not the filter. It only decides how many extra endpoint-only cities to carry.
+CITY_INDEX_MIN_POPULATION = 1000
 
 # Column positions in the GeoNames dump (tab separated, no header).
 # See https://download.geonames.org/export/dump/readme.txt
@@ -25,6 +38,7 @@ _COL_LATITUDE = 4
 _COL_LONGITUDE = 5
 _COL_FEATURE_CLASS = 6
 _COL_ADMIN1 = 10  # two letter state code for US rows
+_COL_POPULATION = 14
 
 # "P" is GeoNames' feature class for populated places: cities, towns, villages.
 _POPULATED_PLACE = "P"
@@ -56,6 +70,19 @@ def normalize_city(name: str) -> str:
     return text.replace(" ", "")
 
 
+def name_aliases(name: str) -> set[str]:
+    """Normalized spellings a caller might reasonably type for this place.
+
+    GeoNames calls it "New York City"; people type "New York". Indexing the trailing-"City" form
+    under both costs nothing and no real place collides with another by losing that suffix.
+    """
+    normalized = normalize_city(name)
+    aliases = {normalized}
+    if normalized.endswith("CITY") and len(normalized) > 4:
+        aliases.add(normalized.removesuffix("CITY"))
+    return aliases
+
+
 def download_dump(destination: Path) -> Path:
     """Fetch the GeoNames US dump, reusing the local copy when it already exists."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -66,21 +93,38 @@ def download_dump(destination: Path) -> Path:
     return destination
 
 
-def build_city_index(dump_path: Path) -> dict[tuple[str, str], tuple[float, float]]:
-    """Map (normalized city, state) to (latitude, longitude) for every US populated place.
+@dataclass(frozen=True, slots=True)
+class Place:
+    name: str
+    state: str
+    latitude: float
+    longitude: float
+    population: int
 
-    Where a state has several places with the same normalized name, the first one wins. They are
-    typically a town and its adjacent census area a couple of miles apart, which is well inside the
-    tolerance this data already has.
+
+def build_city_index(dump_path: Path) -> dict[tuple[str, str], Place]:
+    """Map (normalized city, state) to a Place, for every US populated place.
+
+    Where a state has several places with the same normalized name, the most populous wins:
+    "Springfield, IL" should be the city of 115,000, not the hamlet that shares its name.
     """
-    index: dict[tuple[str, str], tuple[float, float]] = {}
+    index: dict[tuple[str, str], Place] = {}
     with zipfile.ZipFile(dump_path) as archive:
         with archive.open("US.txt") as handle:
             for raw_line in io.TextIOWrapper(handle, encoding="utf-8"):
                 fields = raw_line.split("\t")
-                if len(fields) <= _COL_ADMIN1 or fields[_COL_FEATURE_CLASS] != _POPULATED_PLACE:
+                if len(fields) <= _COL_POPULATION or fields[_COL_FEATURE_CLASS] != _POPULATED_PLACE:
                     continue
-                key = (normalize_city(fields[_COL_ASCII_NAME]), fields[_COL_ADMIN1].strip().upper())
-                if key not in index:
-                    index[key] = (float(fields[_COL_LATITUDE]), float(fields[_COL_LONGITUDE]))
+                state = fields[_COL_ADMIN1].strip().upper()
+                place = Place(
+                    name=fields[_COL_ASCII_NAME],
+                    state=state,
+                    latitude=float(fields[_COL_LATITUDE]),
+                    longitude=float(fields[_COL_LONGITUDE]),
+                    population=int(fields[_COL_POPULATION] or 0),
+                )
+                key = (normalize_city(place.name), state)
+                incumbent = index.get(key)
+                if incumbent is None or place.population > incumbent.population:
+                    index[key] = place
     return index
